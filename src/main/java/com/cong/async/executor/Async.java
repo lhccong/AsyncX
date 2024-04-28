@@ -1,5 +1,7 @@
 package com.cong.async.executor;
 
+import com.cong.async.callback.DefaultGroupCallback;
+import com.cong.async.callback.IGroupCallback;
 import com.cong.async.wrapper.WorkerWrapper;
 
 import java.util.*;
@@ -14,7 +16,7 @@ import java.util.stream.Collectors;
  */
 public class Async {
     private Async() {
-        
+
     }
     /**
      * 默认不定长线程池
@@ -81,6 +83,42 @@ public class Async {
      */
     public static boolean start(long timeout, WorkerWrapper... workerWrapper) throws ExecutionException, InterruptedException {
         return start(timeout, COMMON_POOL, workerWrapper);
+    }
+
+    /**
+     * 启动异步 (默认线程池)
+     *
+     * @param timeout       超时
+     * @param groupCallback 群组回调
+     * @param workerWrapper 工作器包装器
+     */
+    public static void startAsync(long timeout, IGroupCallback groupCallback, WorkerWrapper... workerWrapper) {
+        startAsync(timeout, COMMON_POOL, groupCallback, workerWrapper);
+    }
+
+    /**
+     * 异步执行,直到所有都完成,或失败后，发起回调
+     */
+    public static void startAsync(long timeout, ExecutorService executorService, IGroupCallback groupCallback, WorkerWrapper... workerWrapper) {
+        if (groupCallback == null) {
+            groupCallback = new DefaultGroupCallback();
+        }
+        IGroupCallback finalGroupCallback = groupCallback;
+        if (executorService != null){
+            executorService.execute(() -> {
+                try {
+                    boolean success = start(timeout, executorService, workerWrapper);
+                    if (success) {
+                        finalGroupCallback.success(Arrays.asList(workerWrapper));
+                    }else{
+                        finalGroupCallback.failure(Arrays.asList(workerWrapper), new TimeoutException("超时"));
+                    }
+                } catch (ExecutionException | InterruptedException e) {
+                    e.printStackTrace();
+                    finalGroupCallback.failure(Arrays.asList(workerWrapper), e);
+                }
+            });
+        }
     }
 
     /**
