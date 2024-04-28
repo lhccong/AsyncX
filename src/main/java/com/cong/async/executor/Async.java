@@ -74,6 +74,13 @@ public class Async {
     }
 
     /**
+     * 同步阻塞,直到所有都完成,或失败（用默认线程池）
+     */
+    public static boolean start(long timeout, WorkerWrapper... workerWrapper) throws ExecutionException, InterruptedException {
+        return start(timeout, COMMON_POOL, workerWrapper);
+    }
+
+    /**
      * 总共多少个执行单元
      */
     @SuppressWarnings("unchecked")
