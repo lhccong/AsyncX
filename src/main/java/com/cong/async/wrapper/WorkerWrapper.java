@@ -208,10 +208,10 @@ public class WorkerWrapper<T, V> {
     /**
      * 快速失败
      */
-    private boolean fastFail(int expect, Exception e) {
+    private void fastFail(int expect, Exception e) {
         //试图将它从expect状态,改成Error
         if (!compareAndSetState(expect, WorkerStatusEnum.ERROR.getValue())) {
-            return false;
+            return;
         }
 
         //尚未处理过结果
@@ -224,7 +224,6 @@ public class WorkerWrapper<T, V> {
         }
 
         callback.result(false, param, workResult);
-        return true;
     }
 
     /**
