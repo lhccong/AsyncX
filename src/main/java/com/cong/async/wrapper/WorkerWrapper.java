@@ -27,7 +27,7 @@ public class WorkerWrapper<T, V> {
     /**
      * 该wrapper的唯一标识
      */
-    private String id;
+    private final String id;
     /**
      * worker将来要处理的param
      */
@@ -36,12 +36,12 @@ public class WorkerWrapper<T, V> {
     /**
      * 执行
      */
-    private IWorker<T, V> worker;
+    private final IWorker<T, V> worker;
 
     /**
      * 回调
      */
-    private ICallback<T, V> callback;
+    private final ICallback<T, V> callback;
 
     /**
      * 在自己后面的wrapper，如果没有，自己就是末尾；如果有一个，就是串行；如果有多个，有几个就需要开几个线程</p>
@@ -131,6 +131,23 @@ public class WorkerWrapper<T, V> {
                 return;
             }
         }
+
+        //如果没有任何依赖，说明自己就是第一批要执行的
+        if (dependWrappers == null || dependWrappers.isEmpty()) {
+            fire();
+            beginNext(executorService, now, remainTime);
+            return;
+        }
+
+        /*如果有前方依赖，存在两种情况
+         一种是前面只有一个wrapper。即 A  ->  B
+        一种是前面有多个wrapper。A C D ->   B。需要A、C、D都完成了才能轮到B。但是无论是A执行完，还是C执行完，都会去唤醒B。
+        所以需要B来做判断，必须A、C、D都完成，自己才能执行 */
+
+        //只有一个依赖
+        if (dependWrappers.size() == 1) {
+
+        }
     }
 
     public void work(ExecutorService executorService, long remainTime, Map<String, WorkerWrapper> forParamUseWrappers) {
@@ -183,7 +200,7 @@ public class WorkerWrapper<T, V> {
         if (nextWrappers == null || nextWrappers.size() != 1) {
             return getState() == WorkerStatusEnum.FINISH.getValue();
         }
-        WorkerWrapper nextWrapper = nextWrappers.get(0);
+        WorkerWrapper<?, ?> nextWrapper = nextWrappers.get(0);
         //继续校验自己的next的状态
         return nextWrapper.getState() == WorkerStatusEnum.FINISH.getValue() && nextWrapper.checkNextWrapperResult();
     }
@@ -197,12 +214,43 @@ public class WorkerWrapper<T, V> {
         }
     }
 
+    /**
+     * 检查结果为空
+     *
+     * @return boolean
+     */
     private boolean checkIsNullResult() {
         return ResultState.DEFAULT == workResult.getResultState();
     }
 
+    /**
+     * 比较和设置状态
+     *
+     * @param expect 期望
+     * @param update 更新
+     * @return boolean
+     */
     private boolean compareAndSetState(int expect, int update) {
         return this.state.compareAndSet(expect, update);
+    }
+
+    /**
+     * 执行自己的job.具体地执行是在另一个线程里,但判断阻塞超时是在work线程
+     */
+    private void fire() {
+        //阻塞取结果
+        workResult = workerDoJob();
+    }
+
+    /**
+     * 具体的单个worker执行任务
+     */
+    private WorkResult<V> workerDoJob() {
+        //避免重复执行
+        if (!checkIsNullResult()) {
+            return workResult;
+        }
+        return workResult;
     }
 
     /**
