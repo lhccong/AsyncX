@@ -3,6 +3,7 @@ package com.cong.async.wrapper;
 import com.cong.async.callback.DefaultCallback;
 import com.cong.async.callback.ICallback;
 import com.cong.async.callback.IWorker;
+import com.cong.async.exception.SkippedException;
 import com.cong.async.executor.time.SystemClock;
 import com.cong.async.worker.DependWrapper;
 import com.cong.async.worker.ResultState;
@@ -98,6 +99,7 @@ public class WorkerWrapper<T, V> {
         }
         this.callback = callback;
     }
+
     /**
      * 开始工作(主要实现)
      * fromWrapper代表这次work是由哪个上游wrapper发起的
@@ -120,17 +122,27 @@ public class WorkerWrapper<T, V> {
             beginNext(executorService, now, remainTime);
             return;
         }
+        //如果在执行前需要校验nextWrapper的状态
+        if (needCheckNextWrapperResult) {
+            //如果自己的next链上有已经出结果或已经开始执行的任务了，自己就不用继续了
+            if (!checkNextWrapperResult()) {
+                fastFail(WorkerStatusEnum.INIT.getValue(), new SkippedException());
+                beginNext(executorService, now, remainTime);
+                return;
+            }
+        }
     }
 
     public void work(ExecutorService executorService, long remainTime, Map<String, WorkerWrapper> forParamUseWrappers) {
         work(executorService, null, remainTime, forParamUseWrappers);
     }
+
     /**
      * 进行下一个任务
      */
     private void beginNext(ExecutorService executorService, long now, long remainTime) {
         //如果有下一个wrapper，就开始执行
-        if (nextWrappers == null || nextWrappers.isEmpty()){
+        if (nextWrappers == null || nextWrappers.isEmpty()) {
             return;
         }
         //花费的时间
@@ -145,7 +157,7 @@ public class WorkerWrapper<T, V> {
         for (int i = 0; i < nextWrappers.size(); i++) {
             int finalI = i;
             futures[i] = CompletableFuture.runAsync(() ->
-                nextWrappers.get(finalI).work(executorService, this, remainTime, forParamUseWrappers));
+                    nextWrappers.get(finalI).work(executorService, this, remainTime, forParamUseWrappers));
         }
         try {
             CompletableFuture.allOf(futures).get(remainTime - costTime, TimeUnit.MILLISECONDS);
@@ -163,13 +175,28 @@ public class WorkerWrapper<T, V> {
     }
 
     /**
+     * 判断自己下游链路上，是否存在已经出结果的或已经开始执行的
+     * 如果没有返回true，如果有返回false
+     */
+    private boolean checkNextWrapperResult() {
+        //如果自己就是最后一个，或者后面有并行的多个，就返回true
+        if (nextWrappers == null || nextWrappers.size() != 1) {
+            return getState() == WorkerStatusEnum.FINISH.getValue();
+        }
+        WorkerWrapper nextWrapper = nextWrappers.get(0);
+        //继续校验自己的next的状态
+        return nextWrapper.getState() == WorkerStatusEnum.FINISH.getValue() && nextWrapper.checkNextWrapperResult();
+    }
+
+    /**
      * 总控制台超时，停止所有任务
      */
     public void stopNow() {
-        if (getState() == WorkerStatusEnum.INIT.getValue()|| getState() == WorkerStatusEnum.WORKING.getValue()) {
+        if (getState() == WorkerStatusEnum.INIT.getValue() || getState() == WorkerStatusEnum.WORKING.getValue()) {
             fastFail(getState(), null);
         }
     }
+
     private boolean checkIsNullResult() {
         return ResultState.DEFAULT == workResult.getResultState();
     }
