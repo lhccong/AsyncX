@@ -13,6 +13,9 @@ import java.util.stream.Collectors;
  * @date 2024/04/28
  */
 public class Async {
+    private Async() {
+        
+    }
     /**
      * 默认不定长线程池
      */
@@ -94,5 +97,22 @@ public class Async {
             totalWorkers(wrappers, set);
         }
 
+    }
+
+    /**
+     * 关闭线程池
+     */
+    public static void shutDown() {
+        shutDown(executorService);
+    }
+    /**
+     * 关闭线程池
+     */
+    public static void shutDown(ExecutorService executorService) {
+        if (executorService != null) {
+            executorService.shutdown();
+        } else {
+            COMMON_POOL.shutdown();
+        }
     }
 }
