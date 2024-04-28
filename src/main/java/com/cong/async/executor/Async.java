@@ -2,11 +2,9 @@ package com.cong.async.executor;
 
 import com.cong.async.wrapper.WorkerWrapper;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 /**
  * 类入口，可以根据自己情况调整 core 线程的数量
@@ -62,6 +60,17 @@ public class Async {
             }
             return false;
         }
+    }
+
+    /**
+     * 如果想自定义线程池，请传 pool。不自定义的话，就走默认的 COMMON_POOL
+     */
+    public static boolean start(long timeout, ExecutorService executorService, WorkerWrapper... workerWrapper) throws ExecutionException, InterruptedException {
+        if(workerWrapper == null || workerWrapper.length == 0) {
+            return false;
+        }
+        List<WorkerWrapper> workerWrappers =  Arrays.stream(workerWrapper).collect(Collectors.toList());
+        return start(timeout, executorService, workerWrappers);
     }
 
     /**
