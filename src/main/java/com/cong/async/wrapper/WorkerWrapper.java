@@ -3,13 +3,16 @@ package com.cong.async.wrapper;
 import com.cong.async.callback.DefaultCallback;
 import com.cong.async.callback.ICallback;
 import com.cong.async.callback.IWorker;
+import com.cong.async.executor.time.SystemClock;
 import com.cong.async.worker.DependWrapper;
 import com.cong.async.worker.ResultState;
 import com.cong.async.worker.WorkResult;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -96,15 +99,59 @@ public class WorkerWrapper<T, V> {
         this.callback = callback;
     }
     /**
-     * 开始工作
+     * 开始工作(主要实现)
      * fromWrapper代表这次work是由哪个上游wrapper发起的
      */
     private void work(ExecutorService executorService, WorkerWrapper fromWrapper, long remainTime, Map<String, WorkerWrapper> forParamUseWrappers) {
-
+        this.forParamUseWrappers = forParamUseWrappers;
+        //将自己放到所有wrapper的集合里去
+        forParamUseWrappers.put(id, this);
+        //获取当前时间
+        long now = SystemClock.now();
+        //总的已经超时了，就快速失败，进行下一个
+        if (remainTime <= 0) {
+            fastFail(WorkerStatusEnum.INIT.getValue(), null);
+            beginNext(executorService, now, remainTime);
+            return;
+        }
+        //如果自己已经执行过了。
+        //可能有多个依赖，其中的一个依赖已经执行完了，并且自己也已开始执行或执行完毕。当另一个依赖执行完毕，又进来该方法时，就不重复处理了
+        if (getState() == WorkerStatusEnum.FINISH.getValue() || getState() == WorkerStatusEnum.ERROR.getValue()) {
+            beginNext(executorService, now, remainTime);
+            return;
+        }
     }
 
     public void work(ExecutorService executorService, long remainTime, Map<String, WorkerWrapper> forParamUseWrappers) {
         work(executorService, null, remainTime, forParamUseWrappers);
+    }
+    /**
+     * 进行下一个任务
+     */
+    private void beginNext(ExecutorService executorService, long now, long remainTime) {
+        //如果有下一个wrapper，就开始执行
+        if (nextWrappers == null || nextWrappers.isEmpty()){
+            return;
+        }
+        //花费的时间
+        long costTime = SystemClock.now() - now;
+        //只有一个wrapper，就直接开始执行然后结束掉
+        if (nextWrappers.size() == 1) {
+            nextWrappers.get(0).work(executorService, this, remainTime - costTime, forParamUseWrappers);
+            return;
+        }
+        //有多个wrapper,就开始异步执行
+        CompletableFuture[] futures = new CompletableFuture[nextWrappers.size()];
+        for (int i = 0; i < nextWrappers.size(); i++) {
+            int finalI = i;
+            futures[i] = CompletableFuture.runAsync(() ->
+                nextWrappers.get(finalI).work(executorService, this, remainTime, forParamUseWrappers));
+        }
+        try {
+            CompletableFuture.allOf(futures).get(remainTime - costTime, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public List<WorkerWrapper<?, ?>> getNextWrappers() {
