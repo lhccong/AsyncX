@@ -7,7 +7,9 @@ import java.util.List;
 
 /**
  * 如果是异步执行整组的话，可以用这个组回调。不推荐使用
- * @author wuweifeng wrote on 2019-11-19.
+ *
+ * @author cong
+ * @date 2024/04/28
  */
 public interface IGroupCallback {
     /**
