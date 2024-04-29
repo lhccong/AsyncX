@@ -171,6 +171,24 @@ public class WorkerWrapper<T, V> {
         }
         nextWrappers.add(workerWrapper);
     }
+
+    private void addNextWrappers(List<WorkerWrapper<?, ?>> wrappers) {
+        if (wrappers == null) {
+            return;
+        }
+        for (WorkerWrapper<?, ?> wrapper : wrappers) {
+            addNext(wrapper);
+        }
+    }
+
+    private void addDependWrappers(List<DependWrapper> dependWrappers) {
+        if (dependWrappers == null) {
+            return;
+        }
+        for (DependWrapper wrapper : dependWrappers) {
+            addDepend(wrapper);
+        }
+    }
     /**
      * 进行下一个任务
      */
@@ -207,8 +225,13 @@ public class WorkerWrapper<T, V> {
     private int getState() {
         return state.get();
     }
+
     public void setParam(T param) {
         this.param = param;
+    }
+
+    private void setNeedCheckNextWrapperResult(boolean needCheckNextWrapperResult) {
+        this.needCheckNextWrapperResult = needCheckNextWrapperResult;
     }
 
     private void addDepend(WorkerWrapper<?, ?> workerWrapper, boolean must) {
