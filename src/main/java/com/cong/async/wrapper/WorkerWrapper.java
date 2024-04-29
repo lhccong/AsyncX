@@ -240,7 +240,7 @@ public class WorkerWrapper<T, V> {
         }
         try {
             //判断 worker 是否已经在执行中。保证任务不被重复执行
-            if (!compareAndSetState(WorkerStatusEnum.INIT.getValue()
+            if (cASState(WorkerStatusEnum.INIT.getValue()
                     , WorkerStatusEnum.WORKING.getValue())) {
                 return workResult;
             }
@@ -251,7 +251,7 @@ public class WorkerWrapper<T, V> {
             V resultValue = worker.action(param, forParamUseWrappers);
 
             //修改任务状态，从working到finish。如果状态不是在working,说明别的地方已经修改了
-            if (!compareAndSetState(WorkerStatusEnum.WORKING.getValue()
+            if (cASState(WorkerStatusEnum.WORKING.getValue()
                     , WorkerStatusEnum.FINISH.getValue())) {
                 return workResult;
             }
@@ -370,7 +370,7 @@ public class WorkerWrapper<T, V> {
 
     private void fastFail(int expect, Exception e) {
         //试图将它从expect状态,改成Error
-        if (!compareAndSetState(expect, WorkerStatusEnum.ERROR.getValue())) {
+        if (cASState(expect, WorkerStatusEnum.ERROR.getValue())) {
             return;
         }
 
@@ -402,8 +402,8 @@ public class WorkerWrapper<T, V> {
      * @param update 更新
      * @return boolean
      */
-    private boolean compareAndSetState(int expect, int update) {
-        return this.state.compareAndSet(expect, update);
+    private boolean cASState(int expect, int update) {
+        return !this.state.compareAndSet(expect, update);
     }
 
     private WorkResult<V> defaultResult() {
