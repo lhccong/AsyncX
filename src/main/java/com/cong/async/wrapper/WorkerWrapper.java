@@ -257,11 +257,11 @@ public class WorkerWrapper<T, V> {
     private boolean checkNextWrapperResult() {
         //如果自己就是最后一个，或者后面有并行的多个，就返回true
         if (nextWrappers == null || nextWrappers.size() != 1) {
-            return getState() == WorkerStatusEnum.FINISH.getValue();
+            return getState() == WorkerStatusEnum.INIT.getValue();
         }
         WorkerWrapper<?, ?> nextWrapper = nextWrappers.get(0);
         //继续校验自己的next的状态
-        return nextWrapper.getState() == WorkerStatusEnum.FINISH.getValue() && nextWrapper.checkNextWrapperResult();
+        return nextWrapper.getState() == WorkerStatusEnum.INIT.getValue() && nextWrapper.checkNextWrapperResult();
     }
 
     /**
