@@ -8,8 +8,10 @@ import com.cong.async.wrapper.WorkerWrapper;
 import java.util.Map;
 
 /**
- * @author sjsdfg
- * @since 2020/6/14
+ * lambda 测试
+ *
+ * @author cong
+ * @date 2024/04/29
  */
 public class LambdaTest {
     public static void main(String[] args) throws Exception {
