@@ -9,10 +9,7 @@ import com.cong.async.worker.DependWrapper;
 import com.cong.async.worker.ResultState;
 import com.cong.async.worker.WorkResult;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -421,5 +418,28 @@ public class WorkerWrapper<T, V> {
 
     public WorkResult<V> getWorkResult() {
         return workResult;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)  {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        WorkerWrapper<?, ?> that = (WorkerWrapper<?, ?>) o;
+        return needCheckNextWrapperResult == that.needCheckNextWrapperResult &&
+                Objects.equals(param, that.param) &&
+                Objects.equals(worker, that.worker) &&
+                Objects.equals(callback, that.callback) &&
+                Objects.equals(nextWrappers, that.nextWrappers) &&
+                Objects.equals(dependWrappers, that.dependWrappers) &&
+                Objects.equals(state, that.state) &&
+                Objects.equals(workResult, that.workResult);
+    }
+    @Override
+    public int hashCode() {
+        return Objects.hash(param, worker, callback, nextWrappers, dependWrappers, state, workResult, needCheckNextWrapperResult);
     }
 }
