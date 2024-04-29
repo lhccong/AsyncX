@@ -134,6 +134,7 @@ public class WorkerWrapper<T, V> {
 
         //如果没有任何依赖，说明自己就是第一批要执行的
         if (dependWrappers == null || dependWrappers.isEmpty()) {
+            //执行自己的job
             fire();
             beginNext(executorService, now, remainTime);
             return;
@@ -146,7 +147,8 @@ public class WorkerWrapper<T, V> {
 
         //只有一个依赖
         if (dependWrappers.size() == 1) {
-
+            doDependsOneJob(fromWrapper);
+            beginNext(executorService, now, remainTime);
         }
     }
 
@@ -215,26 +217,6 @@ public class WorkerWrapper<T, V> {
     }
 
     /**
-     * 检查结果为空
-     *
-     * @return boolean
-     */
-    private boolean checkIsNullResult() {
-        return ResultState.DEFAULT == workResult.getResultState();
-    }
-
-    /**
-     * 比较和设置状态
-     *
-     * @param expect 期望
-     * @param update 更新
-     * @return boolean
-     */
-    private boolean compareAndSetState(int expect, int update) {
-        return this.state.compareAndSet(expect, update);
-    }
-
-    /**
      * 执行自己的job.具体地执行是在另一个线程里,但判断阻塞超时是在work线程
      */
     private void fire() {
@@ -284,6 +266,19 @@ public class WorkerWrapper<T, V> {
             return workResult;
         }
     }
+    private void doDependsOneJob(WorkerWrapper dependWrapper){
+        //超时 快速失败
+        if (ResultState.TIMEOUT == dependWrapper.getWorkResult().getResultState()){
+            workResult = defaultResult();
+            fastFail(WorkerStatusEnum.INIT.getValue(), null);
+        }else if (ResultState.EXCEPTION == dependWrapper.getWorkResult().getResultState()){
+            workResult = defaultExResult(dependWrapper.getWorkResult().getEx());
+            fastFail(WorkerStatusEnum.INIT.getValue(), null);
+        } else{
+            //如果依赖任务正常，自己开始执行
+            fire();
+        }
+    }
 
     private void fastFail(int expect, Exception e) {
         //试图将它从expect状态,改成Error
@@ -303,6 +298,26 @@ public class WorkerWrapper<T, V> {
         callback.result(false, param, workResult);
     }
 
+    /**
+     * 检查结果为空
+     *
+     * @return boolean
+     */
+    private boolean checkIsNullResult() {
+        return ResultState.DEFAULT == workResult.getResultState();
+    }
+
+    /**
+     * 比较和设置状态
+     *
+     * @param expect 期望
+     * @param update 更新
+     * @return boolean
+     */
+    private boolean compareAndSetState(int expect, int update) {
+        return this.state.compareAndSet(expect, update);
+    }
+
     private WorkResult<V> defaultResult() {
         workResult.setResultState(ResultState.TIMEOUT);
         workResult.setResult(worker.defaultValue());
@@ -313,6 +328,10 @@ public class WorkerWrapper<T, V> {
         workResult.setResultState(ResultState.EXCEPTION);
         workResult.setResult(worker.defaultValue());
         workResult.setEx(ex);
+        return workResult;
+    }
+
+    public WorkResult<V> getWorkResult() {
         return workResult;
     }
 }
