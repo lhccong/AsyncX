@@ -9,8 +9,10 @@ import com.cong.async.worker.DependWrapper;
 import com.cong.async.worker.ResultState;
 import com.cong.async.worker.WorkResult;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -149,8 +151,12 @@ public class WorkerWrapper<T, V> {
         if (dependWrappers.size() == 1) {
             doDependsOneJob(fromWrapper);
             beginNext(executorService, now, remainTime);
+        } else {
+            //有多个依赖，需要等待所有依赖都完成
+            doDependsMoreJob(executorService, dependWrappers, fromWrapper, now, remainTime);
         }
     }
+
 
     public void work(ExecutorService executorService, long remainTime, Map<String, WorkerWrapper> forParamUseWrappers) {
         work(executorService, null, remainTime, forParamUseWrappers);
@@ -266,17 +272,99 @@ public class WorkerWrapper<T, V> {
             return workResult;
         }
     }
-    private void doDependsOneJob(WorkerWrapper dependWrapper){
+
+    private void doDependsOneJob(WorkerWrapper dependWrapper) {
         //超时 快速失败
-        if (ResultState.TIMEOUT == dependWrapper.getWorkResult().getResultState()){
+        if (ResultState.TIMEOUT == dependWrapper.getWorkResult().getResultState()) {
             workResult = defaultResult();
             fastFail(WorkerStatusEnum.INIT.getValue(), null);
-        }else if (ResultState.EXCEPTION == dependWrapper.getWorkResult().getResultState()){
+        } else if (ResultState.EXCEPTION == dependWrapper.getWorkResult().getResultState()) {
             workResult = defaultExResult(dependWrapper.getWorkResult().getEx());
             fastFail(WorkerStatusEnum.INIT.getValue(), null);
-        } else{
+        } else {
             //如果依赖任务正常，自己开始执行
             fire();
+        }
+    }
+
+    private void doDependsMoreJob(ExecutorService executorService, List<DependWrapper> dependWrappers, WorkerWrapper fromWrapper, long now, long remainTime) {
+        //如果当前任务已经完成了，依赖的其他任务拿到锁再进来时，不需要执行下面的逻辑了。
+        if (getState() != WorkerStatusEnum.INIT.getValue()) {
+            return;
+        }
+        boolean nowDependIsMust = false;
+        //创建必须完成的上游 wrapper 集合
+        Set<DependWrapper> mustWrapper = new HashSet<>();
+
+        //遍历依赖项
+        for (DependWrapper dependWrapper : dependWrappers) {
+            if (dependWrapper.isMust()) {
+                mustWrapper.add(dependWrapper);
+            }
+            if (dependWrapper.getDepWrapper().equals(fromWrapper)) {
+                nowDependIsMust = dependWrapper.isMust();
+            }
+        }
+        //如果都是不必须的条件，则自己开始执行
+        if (mustWrapper.isEmpty()) {
+            if (ResultState.TIMEOUT == fromWrapper.getWorkResult().getResultState()) {
+                fastFail(WorkerStatusEnum.INIT.getValue(), null);
+            } else {
+                fire();
+            }
+            beginNext(executorService, now, remainTime);
+            return;
+        }
+
+        //如果存在需要必须完成的，且fromWrapper不是必须的，就什么也不干
+        if (!nowDependIsMust) {
+            return;
+        }
+
+        //如果fromWrapper是必须的
+        boolean existNoFinish = false;
+        boolean hasError = false;
+
+        //先判断前面必须要执行的依赖任务的执行结果，如果有任何一个失败，那就不用走action了，直接给自己设置为失败，进行下一步就是了
+        checkExecResult(executorService, now, remainTime, mustWrapper, existNoFinish, hasError);
+    }
+
+    private void checkExecResult(ExecutorService executorService, long now, long remainTime, Set<DependWrapper> mustWrapper, boolean existNoFinish, boolean hasError) {
+        for (DependWrapper dependWrapper : mustWrapper) {
+            WorkerWrapper<?, ?> depWrapper = dependWrapper.getDepWrapper();
+            WorkResult<?> tempWorkResult = depWrapper.getWorkResult();
+
+            //如果为 init 和 working 则说明还没执行完
+            if (depWrapper.getState() == WorkerStatusEnum.INIT.getValue() || depWrapper.getState() == WorkerStatusEnum.WORKING.getValue()) {
+                existNoFinish = true;    //存在还没执行完的依赖任务
+                break;
+            }
+            //如果是超时设置默认结果
+            if (ResultState.TIMEOUT == tempWorkResult.getResultState()) {
+                workResult = defaultResult();
+                hasError = true;    //存在执行失败的依赖任务
+                break;
+            }
+            //如果为 error 则说明执行失败了
+            if (depWrapper.getState() == WorkerStatusEnum.ERROR.getValue()) {
+                workResult = defaultExResult(depWrapper.getWorkResult().getEx());
+                hasError = true;    //存在执行失败的依赖任务
+                break;
+            }
+        }
+        //存在失败的
+        if (hasError) {
+            fastFail(WorkerStatusEnum.INIT.getValue(), null);
+            beginNext(executorService, now, remainTime);
+            return;
+        }
+
+        //如果上游都没有失败，分为两种情况，一种是都finish了，一种是有的在working
+        //都finish的话
+        if (!existNoFinish) {
+            //上游都finish了，进行自己
+            fire();
+            beginNext(executorService, now, remainTime);
         }
     }
 
