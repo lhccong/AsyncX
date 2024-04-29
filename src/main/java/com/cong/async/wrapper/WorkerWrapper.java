@@ -68,7 +68,7 @@ public class WorkerWrapper<T, V> {
      * <p>
      * 1-finish, 2-error, 3-working
      */
-    private AtomicInteger state = new AtomicInteger(0);
+    private final AtomicInteger state = new AtomicInteger(0);
 
     /**
      * 该map存放所有wrapper的id和wrapper映射
@@ -243,19 +243,48 @@ public class WorkerWrapper<T, V> {
     }
 
     /**
-     * 具体的单个worker执行任务
+     * 具体的单个 worker 执行任务
      */
     private WorkResult<V> workerDoJob() {
         //避免重复执行
         if (!checkIsNullResult()) {
             return workResult;
         }
-        return workResult;
+        try {
+            //判断 worker 是否已经在执行中。保证任务不被重复执行
+            if (!compareAndSetState(WorkerStatusEnum.INIT.getValue()
+                    , WorkerStatusEnum.WORKING.getValue())) {
+                return workResult;
+            }
+            //执行任务触发监听
+            callback.begin();
+
+            //执行任务(action 交由 worker 实现)
+            V resultValue = worker.action(param, forParamUseWrappers);
+
+            //修改任务状态，从working到finish。如果状态不是在working,说明别的地方已经修改了
+            if (!compareAndSetState(WorkerStatusEnum.WORKING.getValue()
+                    , WorkerStatusEnum.FINISH.getValue())) {
+                return workResult;
+            }
+
+            //设置结果
+            workResult.setResultState(ResultState.SUCCESS);
+            workResult.setResult(resultValue);
+            //回调成功
+            callback.result(true, param, workResult);
+
+            return workResult;
+        } catch (Exception e) {
+            //避免重复回调
+            if (!checkIsNullResult()) {
+                return workResult;
+            }
+            fastFail(WorkerStatusEnum.WORKING.getValue(), e);
+            return workResult;
+        }
     }
 
-    /**
-     * 快速失败
-     */
     private void fastFail(int expect, Exception e) {
         //试图将它从expect状态,改成Error
         if (!compareAndSetState(expect, WorkerStatusEnum.ERROR.getValue())) {
@@ -274,23 +303,12 @@ public class WorkerWrapper<T, V> {
         callback.result(false, param, workResult);
     }
 
-    /**
-     * 默认结果
-     *
-     * @return {@link WorkResult}<{@link V}>
-     */
     private WorkResult<V> defaultResult() {
         workResult.setResultState(ResultState.TIMEOUT);
         workResult.setResult(worker.defaultValue());
         return workResult;
     }
 
-    /**
-     * 默认结果(带异常)
-     *
-     * @param ex 前任
-     * @return {@link WorkResult}<{@link V}>
-     */
     private WorkResult<V> defaultExResult(Exception ex) {
         workResult.setResultState(ResultState.EXCEPTION);
         workResult.setResult(worker.defaultValue());
