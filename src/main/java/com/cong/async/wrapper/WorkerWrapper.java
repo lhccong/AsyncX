@@ -159,6 +159,18 @@ public class WorkerWrapper<T, V> {
         work(executorService, null, remainTime, forParamUseWrappers);
     }
 
+    private void addNext(WorkerWrapper<?, ?> workerWrapper) {
+        if (nextWrappers == null) {
+            nextWrappers = new ArrayList<>();
+        }
+        //避免添加重复
+        for (WorkerWrapper wrapper : nextWrappers) {
+            if (workerWrapper.equals(wrapper)) {
+                return;
+            }
+        }
+        nextWrappers.add(workerWrapper);
+    }
     /**
      * 进行下一个任务
      */
@@ -194,6 +206,25 @@ public class WorkerWrapper<T, V> {
 
     private int getState() {
         return state.get();
+    }
+    public void setParam(T param) {
+        this.param = param;
+    }
+
+    private void addDepend(WorkerWrapper<?, ?> workerWrapper, boolean must) {
+        addDepend(new DependWrapper(workerWrapper, must));
+    }
+    private void addDepend(DependWrapper dependWrapper) {
+        if (dependWrappers == null) {
+            dependWrappers = new ArrayList<>();
+        }
+        //如果依赖的是重复的同一个，就不重复添加了
+        for (DependWrapper wrapper : dependWrappers) {
+            if (wrapper.equals(dependWrapper)) {
+                return;
+            }
+        }
+        dependWrappers.add(dependWrapper);
     }
 
     /**
